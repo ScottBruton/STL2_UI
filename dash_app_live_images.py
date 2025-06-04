@@ -230,6 +230,7 @@ app.index_string = '''
                 font-weight: 500 !important;
             }
         </style>
+        <link rel="icon" type="image/png" href="/assets/bayer-logo.png"/>
     </head>
     <body>
         {%app_entry%}
@@ -247,7 +248,7 @@ app.layout = html.Div([
     html.Div([
         html.H1("Bayer Radiology: Stellinity 2.0 SUDS Detector", 
                 style={"margin": "0", "fontSize": "2rem", "fontWeight": "bold"}),
-        html.Img(src="/bayer-logo.png", style={"height": "48px"})
+        html.Img(src="/assets/bayer-logo.png", style={"height": "48px"})
     ], className="header"),
 
     # Hidden store for model output visibility
@@ -417,6 +418,8 @@ serial_thread_handle.start()
 
 @app.callback(
     Output("prime-btn", "disabled"),
+    Output("pause-btn", "children"),
+    Output("pause-btn", "className"),
     Output("pause-btn", "disabled"),
     Output("stop-btn", "disabled"),
     Output('model-output-visibility', 'data'),
@@ -429,43 +432,86 @@ serial_thread_handle.start()
 def control_buttons(prime_clicks, pause_clicks, stop_clicks, current_state):
     ctx = callback_context
     if not ctx.triggered:
-        return False, True, True, current_state
+        return False, "PAUSE", "pause-btn", True, True, current_state
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     if button_id == 'prime-btn':
-        return True, False, False, 'primed'
+        return True, "PAUSE", "pause-btn", False, False, 'primed'
     elif button_id == 'pause-btn':
         if current_state == 'primed':
-            return True, False, False, 'paused'
+            return True, "RESUME", "resume-btn", False, False, 'paused'
         elif current_state == 'paused':
-            return True, False, False, 'primed'
+            return True, "PAUSE", "pause-btn", False, False, 'primed'
         else:
-            return False, True, True, current_state
+            return False, "PAUSE", "pause-btn", True, True, current_state
     elif button_id == 'stop-btn':
-        return False, True, True, 'stopped'
-    return False, True, True, current_state
+        return False, "PAUSE", "pause-btn", True, True, 'stopped'
+    return False, "PAUSE", "pause-btn", True, True, current_state
 
 @app.callback(
+    Output("model-detection-output-box", "children"),
     Output("label-output", "children"),
     Output("label-output", "className"),
-    Input("prediction-interval", "n_intervals"),
+    Input("image-interval-bounding", "n_intervals"),
     Input('model-output-visibility', 'data')
 )
-def update_label_live(n, visibility):
-    if visibility == 'stopped':
-        return "System Ready", "status-pill"
-    if visibility == 'paused':
-        return "System Paused", "status-pill no-suds"
-    status_class = "status-pill "
-    if latest_label == "Connected":
-        status_class += "connected"
-    elif latest_label == "Disconnected":
-        status_class += "disconnected"
-    elif latest_label == "No SUDS":
-        status_class += "no-suds"
+def update_model_detection_output(n, visibility):
+    # Only update label when primed, otherwise freeze
+    if visibility == 'primed':
+        # Show processed image and update label
+        status_class = "status-pill "
+        if latest_label == "Connected":
+            status_class += "connected"
+        elif latest_label == "Disconnected":
+            status_class += "disconnected"
+        elif latest_label == "No SUDS":
+            status_class += "no-suds"
+        else:
+            status_class += "error"
+        return (
+            html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
+            latest_label,
+            status_class
+        )
+    elif visibility == 'paused':
+        return (
+            html.Div(
+                "Paused",
+                style={
+                    "width": "100%",
+                    "height": "300px",
+                    "background": "#e0e0e0",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "color": "#444",
+                    "fontWeight": "bold",
+                    "fontSize": "1.2rem",
+                    "borderRadius": "8px"
+                }
+            ),
+            "System Paused",
+            "status-pill no-suds"
+        )
     else:
-        status_class += "error"
-    return latest_label, status_class
-    
+        return (
+            html.Div(
+                "Priming flag not detected.",
+                style={
+                    "width": "100%",
+                    "height": "300px",
+                    "background": "#e0e0e0",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "color": "#444",
+                    "fontWeight": "bold",
+                    "fontSize": "1.2rem",
+                    "borderRadius": "8px"
+                }
+            ),
+            "System Ready",
+            "status-pill"
+        )
 
 @app.callback(
     Output("live-image-raw", "src"),
@@ -473,47 +519,6 @@ def update_label_live(n, visibility):
 )
 def update_camera_image(n):
     return latest_img_src
-
-@app.callback(
-    Output("model-detection-output-box", "children"),
-    Input("image-interval-bounding", "n_intervals"),
-    Input('model-output-visibility', 'data')
-)
-def update_model_detection_output(n, visibility):
-    if visibility == 'primed':
-        return html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"})
-    elif visibility == 'paused':
-        return html.Div(
-            "Paused",
-            style={
-                "width": "100%",
-                "height": "300px",
-                "background": "#e0e0e0",
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "center",
-                "color": "#444",
-                "fontWeight": "bold",
-                "fontSize": "1.2rem",
-                "borderRadius": "8px"
-            }
-        )
-    else:
-        return html.Div(
-            "Priming flag not detected.",
-            style={
-                "width": "100%",
-                "height": "300px",
-                "background": "#e0e0e0",
-                "display": "flex",
-                "alignItems": "center",
-                "justifyContent": "center",
-                "color": "#444",
-                "fontWeight": "bold",
-                "fontSize": "1.2rem",
-                "borderRadius": "8px"
-            }
-        )
 
 # === Run Server ===
 if __name__ == "__main__":
