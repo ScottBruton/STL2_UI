@@ -129,6 +129,7 @@ app.index_string = '''
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
+                font-family: 'Roboto', sans-serif;
                 font-size: 2rem;
                 font-weight: bold;
                 margin-bottom: 2rem;
@@ -264,9 +265,9 @@ app.layout = html.Div([
 
         # Right Column - Model Detection
         html.Div([
-            html.H3("Model Detection Output", style={"margin": "0", "padding": "0.5rem"}),
+            html.H3("Model Detection Output", id="model-detection-header", style={"margin": "0", "padding": "0.5rem"}),
             html.Div(id="model-detection-output-box")
-        ], className="feed-box")
+        ], id="model-detection-container", className="feed-box")
     ], className="feed-container"),
 
     # Control Buttons
@@ -280,7 +281,7 @@ app.layout = html.Div([
     html.Div([
         html.Div("Detected State:", className="status-label"),
         html.Div(id="label-output", className="status-pill"),
-        html.Div("System Checkpoint: AI Gatekeeping Active", className="substatus")
+        html.Div("SUDS 2.0 System Checkpoint: Priming AI Detection", className="substatus")
     ], className="status-container"),
 
     # Hidden intervals
@@ -418,6 +419,7 @@ serial_thread_handle.start()
 
 @app.callback(
     Output("prime-btn", "disabled"),
+    Output("prime-btn", "children"),
     Output("pause-btn", "children"),
     Output("pause-btn", "className"),
     Output("pause-btn", "disabled"),
@@ -432,20 +434,45 @@ serial_thread_handle.start()
 def control_buttons(prime_clicks, pause_clicks, stop_clicks, current_state):
     ctx = callback_context
     if not ctx.triggered:
-        return False, "PAUSE", "pause-btn", True, True, current_state
+        return False, "PRIME", "PAUSE", "pause-btn", True, True, current_state
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     if button_id == 'prime-btn':
-        return True, "PAUSE", "pause-btn", False, False, 'primed'
+        return True, "Priming...", "PAUSE", "pause-btn", False, False, 'primed'
     elif button_id == 'pause-btn':
         if current_state == 'primed':
-            return True, "RESUME", "resume-btn", False, False, 'paused'
+            return True, "Priming...", "RESUME", "resume-btn", False, False, 'paused'
         elif current_state == 'paused':
-            return True, "PAUSE", "pause-btn", False, False, 'primed'
+            return True, "Priming...", "PAUSE", "pause-btn", False, False, 'primed'
         else:
-            return False, "PAUSE", "pause-btn", True, True, current_state
+            return False, "PRIME", "PAUSE", "pause-btn", True, True, current_state
     elif button_id == 'stop-btn':
-        return False, "PAUSE", "pause-btn", True, True, 'stopped'
-    return False, "PAUSE", "pause-btn", True, True, current_state
+        return False, "PRIME", "PAUSE", "pause-btn", True, True, 'stopped'
+    return False, "PRIME", "PAUSE", "pause-btn", True, True, current_state
+
+@app.callback(
+    Output("model-detection-container", "style"),
+    Output("model-detection-header", "style"),
+    Input('model-output-visibility', 'data')
+)
+def update_model_detection_container_style(visibility):
+    if visibility == 'primed':
+        return {
+            "backgroundColor": "orange",
+            "color": "white",
+            "borderRadius": "12px",
+            "border": "1px solid #E0E0E0",
+            "boxShadow": "0 0 12px rgba(0,0,0,0.05)",
+            "padding": "0.5rem"
+        }, {"margin": "0", "padding": "0.5rem", "color": "white", "backgroundColor": "orange"}
+    else:
+        return {
+            "backgroundColor": "white",
+            "color": "#1A1A1A",
+            "borderRadius": "12px",
+            "border": "1px solid #E0E0E0",
+            "boxShadow": "0 0 12px rgba(0,0,0,0.05)",
+            "padding": "0.5rem"
+        }, {"margin": "0", "padding": "0.5rem", "color": "#1A1A1A", "backgroundColor": "white"}
 
 @app.callback(
     Output("model-detection-output-box", "children"),
