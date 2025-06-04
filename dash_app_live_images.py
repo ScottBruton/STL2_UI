@@ -7,7 +7,7 @@ import threading
 from collections import deque
 
 import dash
-from dash import html, dcc, Input, Output, callback_context
+from dash import html, dcc, Input, Output, State, callback_context
 import dash_bootstrap_components as dbc
 from PIL import Image
 import numpy as np
@@ -98,7 +98,6 @@ serial_thread_handle = None
 latest_img_src = None
 latest_img_src_bounding = None
 latest_label = ""
-PRIMING = False
 PRIMED = False
 PAUSED = False  # New state variable for pause status
 
@@ -251,6 +250,9 @@ app.layout = html.Div([
         html.Img(src="/bayer-logo.png", style={"height": "48px"})
     ], className="header"),
 
+    # Hidden store for model output visibility
+    dcc.Store(id='model-output-visibility', data='stopped'),
+
     # Main Content Area
     html.Div([
         # Left Column - Camera Feed
@@ -357,7 +359,6 @@ def enhance_contrast_clahe(img_rgb):
 # # === Serial Thread ===
 
 def serial_thread():
-
     global running, latest_img_src, latest_label, latest_img_src_bounding
     running = True
     while running:
@@ -378,7 +379,6 @@ def serial_thread():
             if img:
                 # --- Raw image ---
                 img_raw_resized = img.resize((320, 240))
-                # code image in base 64 format to avoide extra HTTPs requests
                 buffered = io.BytesIO()
                 img.save(buffered, format="JPEG")
                 img_base64 = base64.b64encode(buffered.getvalue()).decode()
@@ -398,29 +398,15 @@ def serial_thread():
                 img_bounding_base64 = base64.b64encode(buffered_bounding.getvalue()).decode()
                 latest_img_src_bounding = f"data:image/jpeg;base64,{img_bounding_base64}"
 
-                # Show predictions only if priming button has been pressed
-                if PRIMING:
-                    # During priming, collect predictions
-                    batch_predictions.append(label1)
-                    batch_images.append(img)
-                    for i in range(len(batch_predictions)):
-                        if (batch_predictions[i] != batch_predictions[i-1]) and (len(batch_predictions) > 1):
-                            print("model detecting new state...")
-                            latest_label = "Detecting new state..."
-                        else:
-                            latest_label = label1
-                            # # Determine color based on label
-                            # color_map = {
-                            #     "Connected": "limegreen",
-                            #     "Disconnected": "red",
-                            #     "No SUDS": "yellow",
-                            #     "ERROR": "red"
-                            # }
-                            # label_color = color_map.get(label1, "white")
-                            # label_text = f"Model prediction: {label1}"
-
-                            # return label_text, {"color": label_color, "textAlign": "center"}
-
+                # Always update latest_label
+                batch_predictions.append(label1)
+                batch_images.append(img)
+                for i in range(len(batch_predictions)):
+                    if (batch_predictions[i] != batch_predictions[i-1]) and (len(batch_predictions) > 1):
+                        print("model detecting new state...")
+                        latest_label = "Detecting new state..."
+                    else:
+                        latest_label = label1
         except Exception as e:
             print("Thread error:", e)
             continue
@@ -431,60 +417,44 @@ serial_thread_handle.start()
 
 @app.callback(
     Output("prime-btn", "disabled"),
-    Output("pause-btn", "children"),
-    Output("pause-btn", "className"),
     Output("pause-btn", "disabled"),
     Output("stop-btn", "disabled"),
-    Output("prediction-interval", "disabled"),
-    Input("prime-btn", "n_clicks"),
-    Input("pause-btn", "n_clicks"),
-    Input("stop-btn", "n_clicks"),
+    Output('model-output-visibility', 'data'),
+    Input('prime-btn', 'n_clicks'),
+    Input('pause-btn', 'n_clicks'),
+    Input('stop-btn', 'n_clicks'),
+    State('model-output-visibility', 'data'),
     prevent_initial_call=True
 )
-def control_buttons(prime_clicks, pause_clicks, stop_clicks):
-    global PRIMING, PAUSED
+def control_buttons(prime_clicks, pause_clicks, stop_clicks, current_state):
     ctx = callback_context
-    triggered = ctx.triggered[0]['prop_id'].split('.')[0] if ctx.triggered else None
-
-    # Initial state (all reset)
-    if not PRIMING and not PAUSED:
-        return False, "PAUSE", "pause-btn", True, True, True
-
-    # PRIME pressed
-    if triggered == "prime-btn":
-        PRIMING = True
-        PAUSED = False
-        return True, "PAUSE", "pause-btn", False, True, False
-
-    # PAUSE/RESUME pressed
-    if triggered == "pause-btn" and PRIMING:
-        PAUSED = not PAUSED
-        if PAUSED:
-            return True, "RESUME", "resume-btn", False, False, True
+    if not ctx.triggered:
+        return False, True, True, current_state
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    if button_id == 'prime-btn':
+        return True, False, False, 'primed'
+    elif button_id == 'pause-btn':
+        if current_state == 'primed':
+            return True, False, False, 'paused'
+        elif current_state == 'paused':
+            return True, False, False, 'primed'
         else:
-            return True, "PAUSE", "pause-btn", False, True, False
-
-    # STOP pressed
-    if triggered == "stop-btn":
-        PRIMING = False
-        PAUSED = False
-        return False, "PAUSE", "pause-btn", True, True, True
-
-    # Default
-    return False, "PAUSE", "pause-btn", True, True, True
+            return False, True, True, current_state
+    elif button_id == 'stop-btn':
+        return False, True, True, 'stopped'
+    return False, True, True, current_state
 
 @app.callback(
     Output("label-output", "children"),
     Output("label-output", "className"),
-    Input("prediction-interval", "n_intervals")
+    Input("prediction-interval", "n_intervals"),
+    Input('model-output-visibility', 'data')
 )
-def update_label_live(n):
-    if not PRIMING:
+def update_label_live(n, visibility):
+    if visibility == 'stopped':
         return "System Ready", "status-pill"
-    
-    if PAUSED:
+    if visibility == 'paused':
         return "System Paused", "status-pill no-suds"
-    
     status_class = "status-pill "
     if latest_label == "Connected":
         status_class += "connected"
@@ -494,7 +464,6 @@ def update_label_live(n):
         status_class += "no-suds"
     else:
         status_class += "error"
-    
     return latest_label, status_class
     
 
@@ -508,13 +477,28 @@ def update_camera_image(n):
 @app.callback(
     Output("model-detection-output-box", "children"),
     Input("image-interval-bounding", "n_intervals"),
+    Input('model-output-visibility', 'data')
 )
-def update_model_detection_output(n):
-    if PRIMING and not PAUSED:
-        # Show processed image
+def update_model_detection_output(n, visibility):
+    if visibility == 'primed':
         return html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"})
+    elif visibility == 'paused':
+        return html.Div(
+            "Paused",
+            style={
+                "width": "100%",
+                "height": "300px",
+                "background": "#e0e0e0",
+                "display": "flex",
+                "alignItems": "center",
+                "justifyContent": "center",
+                "color": "#444",
+                "fontWeight": "bold",
+                "fontSize": "1.2rem",
+                "borderRadius": "8px"
+            }
+        )
     else:
-        # Show grey box with message
         return html.Div(
             "Priming flag not detected.",
             style={
@@ -530,54 +514,6 @@ def update_model_detection_output(n):
                 "borderRadius": "8px"
             }
         )
-
-# @app.callback(
-#     Output("prediction-interval", "disabled"),
-#     Input("prime-btn", "n_clicks"),
-#     Input("stop-btn", "n_clicks"),
-#     prevent_initial_call=True,
-#     allow_duplicate=True
-# )
-# def toggle_prediction_interval(prime_clicks, stop_clicks):
-#     ctx = callback_context
-#     if not ctx.triggered:
-#         raise dash.exceptions.PreventUpdate
-
-#     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-#     global running, serial_thread_handle
-
-#     if button_id == "prime-btn":
-#         if not running:
-#             running = True
-#             serial_thread_handle = threading.Thread(target=serial_thread, daemon=True)
-#             serial_thread_handle.start()
-#         return False
-#     elif button_id == "stop-btn":
-#         running = False
-#         return True
-#     else:
-#         raise dash.exceptions.PreventUpdate
-
-
-# @app.callback(
-#     Output("prediction-interval", "disabled"),
-#     Input("stop-btn", "n_clicks"),
-#     prevent_initial_call=True
-# )
-# def stop_system(n_clicks):
-#     global running
-#     running = False
-#     return True  # disable prediction interval
-
-# @app.callback(
-#     Output("live-image", "src"),
-#     Output("prediction-text", "children"),
-#     Input("image-interval", "n_intervals"),
-# )
-# def update_gui(n):
-#     global latest_img_src, latest_label
-#     return latest_img_src, f"Prediction: {latest_label}"
 
 # === Run Server ===
 if __name__ == "__main__":
