@@ -151,6 +151,7 @@ app.index_string = '''
                 border: 1px solid #E0E0E0;
                 box-shadow: 0 0 12px rgba(0,0,0,0.05);
                 padding: 0.5rem;
+                align-items: center;
             }
             .feed-box h3 {
                 font-size: 1rem;
@@ -158,6 +159,7 @@ app.index_string = '''
                 padding: 0.4rem;
                 margin: 0;
                 border-radius: 8px 8px 0 0;
+                text-align: center;
             }
             .image {
                 width: 100%;
@@ -248,7 +250,7 @@ app.layout = html.Div([
     # Header
     html.Div([
         html.H1("Bayer Radiology: Stellinity 2.0 SUDS Detector", 
-                style={"margin": "0", "fontSize": "2rem", "fontWeight": "bold"}),
+                style={"margin": "0", "fontSize": "2rem", "fontWeight": "bold", "textAlign": "center", "width": "100%"}),
         html.Img(src="/assets/bayer-logo.png", style={"height": "48px"})
     ], className="header"),
 
@@ -259,13 +261,13 @@ app.layout = html.Div([
     html.Div([
         # Left Column - Camera Feed
         html.Div([
-            html.H3("Camera Feed", style={"margin": "0", "padding": "0.5rem"}),
+            html.H3("Camera Feed", style={"margin": "0", "padding": "0.5rem", "textAlign": "center", "width": "100%"}),
             html.Img(id="live-image-raw", style={"width": "100%", "borderRadius": "8px"})
         ], className="feed-box"),
 
         # Right Column - Model Detection
         html.Div([
-            html.H3("Model Detection Output", id="model-detection-header", style={"margin": "0", "padding": "0.5rem"}),
+            html.H3("Model Detection Output", id="model-detection-header", style={"margin": "0 auto", "padding": "0.5rem", "textAlign": "center", "width": "100%", "display": "block"}),
             html.Div(id="model-detection-output-box")
         ], id="model-detection-container", className="feed-box")
     ], className="feed-container"),
