@@ -276,8 +276,10 @@ app.layout = html.Div([
 
     # Hidden store for model output visibility
     dcc.Store(id='model-output-visibility', data='stopped'),
-    # New store for detecting state
+    # Store for detecting state
     dcc.Store(id='detecting-state', data='ready'),
+    # Store for error modal state
+    dcc.Store(id='error-modal-store', data={"show": False, "state": ""}),
 
     # Main Content Area
     html.Div([
@@ -306,6 +308,18 @@ app.layout = html.Div([
         html.Div(id="label-output", className="status-pill"),
         html.Div("SUDS 2.0 System Checkpoint: Priming AI Detection", className="substatus")
     ], className="status-container"),
+
+    # Error Modal
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle("System Error State Detected"), close_button=False, style={"backgroundColor": "#FFF3E0", "color": "#FFAB00", "fontWeight": "bold"}),
+        dbc.ModalBody([
+            html.Div(id="error-modal-message", style={"fontSize": "1.2rem", "textAlign": "center", "marginBottom": "1rem"}),
+            html.Div([
+                dbc.Button("Retry", id="error-modal-retry", color="primary", className="me-2", style={"backgroundColor": "#F58220", "border": "none"}),
+                dbc.Button("Cancel", id="error-modal-cancel", color="secondary", style={"backgroundColor": "#D32F2F", "border": "none"})
+            ], style={"display": "flex", "justifyContent": "center", "gap": "1rem"})
+        ]),
+    ], id="error-modal", is_open=False, centered=True, backdrop="static", style={"borderRadius": "16px", "boxShadow": "0 4px 24px rgba(0,0,0,0.15)"}),
 
     # Hidden intervals
     dcc.Interval(id="GUI-interval", interval=2000, n_intervals=0),
@@ -498,11 +512,21 @@ def update_model_detection_container_style(visibility):
     Output("model-detection-output-box", "children"),
     Output("label-output", "children"),
     Output("label-output", "className"),
+    Output('error-modal-store', 'data'),
     Input("image-interval-bounding", "n_intervals"),
     Input('model-output-visibility', 'data'),
-    Input('detecting-state', 'data')
+    Input('detecting-state', 'data'),
+    State('error-modal-store', 'data')
 )
-def update_model_detection_output(n, visibility, detecting_state):
+def update_model_detection_output(n, visibility, detecting_state, error_modal_data):
+    if error_modal_data and error_modal_data.get("show", False):
+        state = error_modal_data.get("state", "")
+        return (
+            html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
+            state,
+            "status-pill error",
+            error_modal_data
+        )
     if detecting_state == 'detecting':
         return (
             html.Div(
@@ -521,9 +545,18 @@ def update_model_detection_output(n, visibility, detecting_state):
                 }
             ),
             "Detecting State...",
-            "status-pill detecting"
+            "status-pill detecting",
+            {"show": False, "state": ""}
         )
     elif visibility == 'primed':
+        # If the detected state is not Connected or detecting, show error modal
+        if latest_label not in ["Connected", "Detecting State..."]:
+            return (
+                html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
+                latest_label,
+                "status-pill error",
+                {"show": True, "state": latest_label}
+            )
         status_class = "status-pill "
         if latest_label == "Connected":
             status_class += "connected"
@@ -536,7 +569,8 @@ def update_model_detection_output(n, visibility, detecting_state):
         return (
             html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
             latest_label,
-            status_class
+            status_class,
+            {"show": False, "state": ""}
         )
     else:
         return (
@@ -556,8 +590,36 @@ def update_model_detection_output(n, visibility, detecting_state):
                 }
             ),
             "System Ready",
-            "status-pill"
+            "status-pill",
+            {"show": False, "state": ""}
         )
+
+# Modal visibility and message
+@app.callback(
+    Output("error-modal", "is_open"),
+    Output("error-modal-message", "children"),
+    Input('error-modal-store', 'data')
+)
+def show_error_modal(error_modal_data):
+    if error_modal_data and error_modal_data.get("show", False):
+        return True, f"Detected State: {error_modal_data.get('state', '')}"
+    return False, ""
+
+# Cancel button resets everything to initial state
+@app.callback(
+    Output('model-output-visibility', 'data', allow_duplicate=True),
+    Output('detecting-state', 'data', allow_duplicate=True),
+    Output('error-modal-store', 'data', allow_duplicate=True),
+    Output('prime-btn', 'disabled', allow_duplicate=True),
+    Output('prime-btn', 'children', allow_duplicate=True),
+    Output('stop-btn', 'disabled', allow_duplicate=True),
+    Input('error-modal-cancel', 'n_clicks'),
+    prevent_initial_call=True
+)
+def cancel_error_modal(n_clicks):
+    if n_clicks:
+        return 'stopped', 'ready', {"show": False, "state": ""}, False, "PRIME", True
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 @app.callback(
     Output("live-image-raw", "src"),
