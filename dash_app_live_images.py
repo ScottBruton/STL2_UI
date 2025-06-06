@@ -202,16 +202,35 @@ app.index_string = '''
             }
             .status-pill {
                 display: inline-block;
-                padding: 0.25rem 1rem;
+                padding: 0.5rem 2.5rem;
                 border-radius: 999px;
                 font-weight: 500;
+                font-size: 1.2rem;
                 margin: 0.5rem 0;
-                font-size: 1.3rem;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+                transition: background 0.2s, color 0.2s;
+                text-align: center;
             }
-            .connected { color: #00C853; }
-            .disconnected { color: #D32F2F; }
-            .no-suds { color: #616161; }
-            .error { color: #FFAB00; }
+            .connected {
+                background: #DFF6E3;   /* light green */
+                color: #00C853;
+            }
+            .disconnected {
+                background: #FFD6D6;   /* light red */
+                color: #D32F2F;
+            }
+            .no-suds {
+                background: #F0F0F0;   /* light gray */
+                color: #616161;
+            }
+            .error {
+                background: #FFF3E0;   /* light orange */
+                color: #FFAB00;
+            }
+            .detecting {
+                background: #FFF3E0;   /* light orange */
+                color: #FFAB00;
+            }
             .substatus {
                 font-size: 0.9rem;
                 color: #666;
@@ -501,15 +520,8 @@ def update_model_detection_output(n, visibility, detecting_state):
                     "borderRadius": "8px"
                 }
             ),
-            html.Div("Detecting State...", 
-            style={
-                "color": "#FFAB00",
-                "fontSize": "1.3rem",
-                "fontWeight": "regular",
-                "textAlign": "center"
-            }
-            ),
-            "status-pill"
+            "Detecting State...",
+            "status-pill detecting"
         )
     elif visibility == 'primed':
         status_class = "status-pill "
