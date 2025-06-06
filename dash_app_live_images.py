@@ -206,6 +206,7 @@ app.index_string = '''
                 border-radius: 999px;
                 font-weight: 500;
                 margin: 0.5rem 0;
+                font-size: 1.3rem;
             }
             .connected { color: #00C853; }
             .disconnected { color: #D32F2F; }
@@ -500,7 +501,14 @@ def update_model_detection_output(n, visibility, detecting_state):
                     "borderRadius": "8px"
                 }
             ),
-            "Detecting State...",
+            html.Div("Detecting State...", 
+            style={
+                "color": "#FFAB00",
+                "fontSize": "1.3rem",
+                "fontWeight": "regular",
+                "textAlign": "center"
+            }
+            ),
             "status-pill"
         )
     elif visibility == 'primed':
