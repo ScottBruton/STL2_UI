@@ -315,8 +315,7 @@ app.layout = html.Div([
         dbc.ModalBody([
             html.Div(id="error-modal-message", style={"fontSize": "1.2rem", "textAlign": "center", "marginBottom": "1rem"}),
             html.Div([
-                dbc.Button("Retry", id="error-modal-retry", color="primary", className="me-2", style={"backgroundColor": "#F58220", "border": "none"}),
-                dbc.Button("Cancel", id="error-modal-cancel", color="secondary", style={"backgroundColor": "#D32F2F", "border": "none"})
+                dbc.Button("Close", id="error-modal-cancel", color="secondary", style={"backgroundColor": "#D32F2F", "border": "none"})
             ], style={"display": "flex", "justifyContent": "center", "gap": "1rem"})
         ]),
     ], id="error-modal", is_open=False, centered=True, backdrop="static", style={"borderRadius": "16px", "boxShadow": "0 4px 24px rgba(0,0,0,0.15)"}),
@@ -325,7 +324,8 @@ app.layout = html.Div([
     dcc.Interval(id="GUI-interval", interval=2000, n_intervals=0),
     dcc.Interval(id="image-interval-raw", interval=2000, n_intervals=0),
     dcc.Interval(id="image-interval-bounding", interval=2000, n_intervals=0),
-    dcc.Interval(id="prediction-interval", interval=2000, n_intervals=0, disabled=True)
+    dcc.Interval(id="prediction-interval", interval=2000, n_intervals=0, disabled=True),
+    dcc.Interval(id="priming-timeout-interval", interval=2000, n_intervals=0, disabled=True)
 ], style={"maxWidth": "1200px", "margin": "0 auto"})
 
 def process_image(data):
@@ -460,6 +460,7 @@ serial_thread_handle.start()
     Output("stop-btn", "disabled"),
     Output('model-output-visibility', 'data'),
     Output('detecting-state', 'data'),
+    Output('priming-timeout-interval', 'disabled'),
     Input('prime-btn', 'n_clicks'),
     Input('stop-btn', 'n_clicks'),
     State('model-output-visibility', 'data'),
@@ -469,19 +470,19 @@ serial_thread_handle.start()
 def control_buttons(prime_clicks, stop_clicks, current_state, detecting_state):
     ctx = callback_context
     if not ctx.triggered:
-        return False, "PRIME", True, current_state, detecting_state
+        return False, "PRIME", True, current_state, detecting_state, True
     
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     
     if button_id == 'prime-btn':
         if detecting_state == 'ready':
-            return True, "Priming...", True, current_state, 'detecting'
+            return True, "Priming...", True, current_state, 'detecting', False
         elif detecting_state == 'detecting':
-            return True, "Priming...", False, 'primed', 'ready'
+            return True, "Priming...", False, 'primed', 'ready', False
     elif button_id == 'stop-btn':
-        return False, "PRIME", True, 'stopped', 'ready'
+        return False, "PRIME", True, 'stopped', 'ready', True
     
-    return False, "PRIME", True, current_state, detecting_state
+    return False, "PRIME", True, current_state, detecting_state, True
 
 @app.callback(
     Output("model-detection-container", "style"),
@@ -513,19 +514,23 @@ def update_model_detection_container_style(visibility):
     Output("label-output", "children"),
     Output("label-output", "className"),
     Output('error-modal-store', 'data'),
+    Output('priming-timeout-interval', 'disabled', allow_duplicate=True),
     Input("image-interval-bounding", "n_intervals"),
     Input('model-output-visibility', 'data'),
     Input('detecting-state', 'data'),
-    State('error-modal-store', 'data')
+    State('error-modal-store', 'data'),
+    prevent_initial_call=True
 )
 def update_model_detection_output(n, visibility, detecting_state, error_modal_data):
+    valid_states = ["Connected", "Disconnected", "No SUDS", "ERROR"]
     if error_modal_data and error_modal_data.get("show", False):
         state = error_modal_data.get("state", "")
         return (
             html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
             state,
             "status-pill error",
-            error_modal_data
+            error_modal_data,
+            True
         )
     if detecting_state == 'detecting':
         return (
@@ -546,17 +551,27 @@ def update_model_detection_output(n, visibility, detecting_state, error_modal_da
             ),
             "Detecting State...",
             "status-pill detecting",
-            {"show": False, "state": ""}
+            {"show": False, "state": ""},
+            False
         )
     elif visibility == 'primed':
-        # If the detected state is not Connected or detecting, show error modal
         if latest_label not in ["Connected", "Detecting State..."]:
-            return (
-                html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
-                latest_label,
-                "status-pill error",
-                {"show": True, "state": latest_label}
-            )
+            if latest_label in valid_states:
+                return (
+                    html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
+                    latest_label,
+                    "status-pill error",
+                    {"show": True, "state": latest_label},
+                    True
+                )
+            else:
+                return (
+                    html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
+                    latest_label,
+                    "status-pill error",
+                    {"show": False, "state": ""},
+                    False
+                )
         status_class = "status-pill "
         if latest_label == "Connected":
             status_class += "connected"
@@ -570,7 +585,8 @@ def update_model_detection_output(n, visibility, detecting_state, error_modal_da
             html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
             latest_label,
             status_class,
-            {"show": False, "state": ""}
+            {"show": False, "state": ""},
+            True
         )
     else:
         return (
@@ -591,7 +607,8 @@ def update_model_detection_output(n, visibility, detecting_state, error_modal_da
             ),
             "System Ready",
             "status-pill",
-            {"show": False, "state": ""}
+            {"show": False, "state": ""},
+            True
         )
 
 # Modal visibility and message
@@ -602,7 +619,23 @@ def update_model_detection_output(n, visibility, detecting_state, error_modal_da
 )
 def show_error_modal(error_modal_data):
     if error_modal_data and error_modal_data.get("show", False):
-        return True, f"Detected State: {error_modal_data.get('state', '')}"
+        state = error_modal_data.get('state', '')
+        # Don't show modal for detecting state labels
+        if state.lower() in ["detecting new state...", "detecting state..."]:
+            return False, ""
+        # Custom error messages
+        custom_msg = ""
+        if state == "Disconnected":
+            custom_msg = "Distal end not detected. Please insert new SUDS"
+        elif state == "No SUDS":
+            custom_msg = "Please check SUDS sensor"
+        elif state == "ERROR":
+            custom_msg = "Please clean SUDS port and call a service technician"
+        return True, [
+            html.Div(f"Detected State: {state}"),
+            html.Br(),
+            html.Div(custom_msg, style={"color": "#D32F2F", "fontWeight": "bold", "fontSize": "1.1rem", "textAlign": "center"}) if custom_msg else None
+        ]
     return False, ""
 
 # Cancel button resets everything to initial state
@@ -640,6 +673,25 @@ def handle_detecting_delay(state):
         time.sleep(0.3)  # 0.3 second delay
         return 'ready', 'primed', False  # Enable the stop button
     return state, dash.no_update, dash.no_update
+
+# Add a callback for the priming timeout interval
+@app.callback(
+    Output('model-output-visibility', 'data', allow_duplicate=True),
+    Output('detecting-state', 'data', allow_duplicate=True),
+    Output('priming-timeout-interval', 'disabled', allow_duplicate=True),
+    Output('prime-btn', 'disabled', allow_duplicate=True),
+    Output('prime-btn', 'children', allow_duplicate=True),
+    Output('stop-btn', 'disabled', allow_duplicate=True),
+    Input('priming-timeout-interval', 'n_intervals'),
+    State('model-output-visibility', 'data'),
+    State('detecting-state', 'data'),
+    prevent_initial_call=True
+)
+def priming_timeout(n_intervals, model_output_visibility, detecting_state):
+    if n_intervals and (detecting_state == 'detecting' or model_output_visibility != 'primed'):
+        # Timeout: reset everything
+        return 'stopped', 'ready', True, False, 'PRIME', True
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 # === Run Server ===
 if __name__ == "__main__":
