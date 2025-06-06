@@ -256,6 +256,8 @@ app.layout = html.Div([
 
     # Hidden store for model output visibility
     dcc.Store(id='model-output-visibility', data='stopped'),
+    # New store for detecting state
+    dcc.Store(id='detecting-state', data='ready'),
 
     # Main Content Area
     html.Div([
@@ -423,21 +425,29 @@ serial_thread_handle.start()
     Output("prime-btn", "children"),
     Output("stop-btn", "disabled"),
     Output('model-output-visibility', 'data'),
+    Output('detecting-state', 'data'),
     Input('prime-btn', 'n_clicks'),
     Input('stop-btn', 'n_clicks'),
     State('model-output-visibility', 'data'),
+    State('detecting-state', 'data'),
     prevent_initial_call=True
 )
-def control_buttons(prime_clicks, stop_clicks, current_state):
+def control_buttons(prime_clicks, stop_clicks, current_state, detecting_state):
     ctx = callback_context
     if not ctx.triggered:
-        return False, "PRIME", True, current_state
+        return False, "PRIME", True, current_state, detecting_state
+    
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
     if button_id == 'prime-btn':
-        return True, "Priming...", False, 'primed'
+        if detecting_state == 'ready':
+            return True, "Priming...", True, current_state, 'detecting'
+        elif detecting_state == 'detecting':
+            return True, "Priming...", False, 'primed', 'ready'
     elif button_id == 'stop-btn':
-        return False, "PRIME", True, 'stopped'
-    return False, "PRIME", True, current_state
+        return False, "PRIME", True, 'stopped', 'ready'
+    
+    return False, "PRIME", True, current_state, detecting_state
 
 @app.callback(
     Output("model-detection-container", "style"),
@@ -469,12 +479,31 @@ def update_model_detection_container_style(visibility):
     Output("label-output", "children"),
     Output("label-output", "className"),
     Input("image-interval-bounding", "n_intervals"),
-    Input('model-output-visibility', 'data')
+    Input('model-output-visibility', 'data'),
+    Input('detecting-state', 'data')
 )
-def update_model_detection_output(n, visibility):
-    # Only update label when primed, otherwise freeze
-    if visibility == 'primed':
-        # Show processed image and update label
+def update_model_detection_output(n, visibility, detecting_state):
+    if detecting_state == 'detecting':
+        return (
+            html.Div(
+                "Priming flag not detected.",
+                style={
+                    "width": "100%",
+                    "height": "300px",
+                    "background": "#e0e0e0",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "center",
+                    "color": "#444",
+                    "fontWeight": "bold",
+                    "fontSize": "1.2rem",
+                    "borderRadius": "8px"
+                }
+            ),
+            "Detecting State...",
+            "status-pill"
+        )
+    elif visibility == 'primed':
         status_class = "status-pill "
         if latest_label == "Connected":
             status_class += "connected"
@@ -516,6 +545,19 @@ def update_model_detection_output(n, visibility):
 )
 def update_camera_image(n):
     return latest_img_src
+
+@app.callback(
+    Output('detecting-state', 'data', allow_duplicate=True),
+    Output('model-output-visibility', 'data', allow_duplicate=True),
+    Output('stop-btn', 'disabled', allow_duplicate=True),
+    Input('detecting-state', 'data'),
+    prevent_initial_call=True
+)
+def handle_detecting_delay(state):
+    if state == 'detecting':
+        time.sleep(0.3)  # 0.3 second delay
+        return 'ready', 'primed', False  # Enable the stop button
+    return state, dash.no_update, dash.no_update
 
 # === Run Server ===
 if __name__ == "__main__":
