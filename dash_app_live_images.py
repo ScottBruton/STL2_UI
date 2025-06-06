@@ -275,7 +275,6 @@ app.layout = html.Div([
     # Control Buttons
     html.Div([
         dbc.Button("PRIME", id="prime-btn", className="prime-btn", n_clicks=0),
-        dbc.Button("PAUSE", id="pause-btn", className="pause-btn", n_clicks=0, disabled=True),
         dbc.Button("STOP", id="stop-btn", className="stop-btn", n_clicks=0, disabled=True)
     ], className="button-container"),
 
@@ -422,34 +421,23 @@ serial_thread_handle.start()
 @app.callback(
     Output("prime-btn", "disabled"),
     Output("prime-btn", "children"),
-    Output("pause-btn", "children"),
-    Output("pause-btn", "className"),
-    Output("pause-btn", "disabled"),
     Output("stop-btn", "disabled"),
     Output('model-output-visibility', 'data'),
     Input('prime-btn', 'n_clicks'),
-    Input('pause-btn', 'n_clicks'),
     Input('stop-btn', 'n_clicks'),
     State('model-output-visibility', 'data'),
     prevent_initial_call=True
 )
-def control_buttons(prime_clicks, pause_clicks, stop_clicks, current_state):
+def control_buttons(prime_clicks, stop_clicks, current_state):
     ctx = callback_context
     if not ctx.triggered:
-        return False, "PRIME", "PAUSE", "pause-btn", True, True, current_state
+        return False, "PRIME", True, current_state
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
     if button_id == 'prime-btn':
-        return True, "Priming...", "PAUSE", "pause-btn", False, False, 'primed'
-    elif button_id == 'pause-btn':
-        if current_state == 'primed':
-            return True, "Priming...", "RESUME", "resume-btn", False, False, 'paused'
-        elif current_state == 'paused':
-            return True, "Priming...", "PAUSE", "pause-btn", False, False, 'primed'
-        else:
-            return False, "PRIME", "PAUSE", "pause-btn", True, True, current_state
+        return True, "Priming...", False, 'primed'
     elif button_id == 'stop-btn':
-        return False, "PRIME", "PAUSE", "pause-btn", True, True, 'stopped'
-    return False, "PRIME", "PAUSE", "pause-btn", True, True, current_state
+        return False, "PRIME", True, 'stopped'
+    return False, "PRIME", True, current_state
 
 @app.callback(
     Output("model-detection-container", "style"),
@@ -500,26 +488,6 @@ def update_model_detection_output(n, visibility):
             html.Img(src=latest_img_src_bounding, style={"width": "100%", "borderRadius": "8px"}),
             latest_label,
             status_class
-        )
-    elif visibility == 'paused':
-        return (
-            html.Div(
-                "Paused",
-                style={
-                    "width": "100%",
-                    "height": "300px",
-                    "background": "#e0e0e0",
-                    "display": "flex",
-                    "alignItems": "center",
-                    "justifyContent": "center",
-                    "color": "#444",
-                    "fontWeight": "bold",
-                    "fontSize": "1.2rem",
-                    "borderRadius": "8px"
-                }
-            ),
-            "System Paused",
-            "status-pill no-suds"
         )
     else:
         return (
